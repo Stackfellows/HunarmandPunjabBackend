@@ -1,0 +1,38 @@
+import mongoose from 'mongoose';
+
+const expenseSchema = new mongoose.Schema({
+    title: {
+        type: String,
+        required: [true, 'Please add a title or description'],
+        trim: true
+    },
+    amount: {
+        type: Number,
+        required: [true, 'Please add an amount']
+    },
+    date: {
+        type: Date,
+        required: [true, 'Please add a date'],
+        default: Date.now
+    },
+    category: {
+        type: String,
+        required: [true, 'Please specify a category'],
+        enum: ['Utilities', 'Supplies', 'Food', 'Salaries', 'Logistics', 'Maintenance', 'Rent', 'Other']
+    },
+    notes: {
+        type: String,
+        trim: true
+    },
+    createdBy: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'User',
+        required: true
+    }
+}, {
+    timestamps: true
+});
+
+const Expense = mongoose.model('Expense', expenseSchema);
+
+export default Expense;

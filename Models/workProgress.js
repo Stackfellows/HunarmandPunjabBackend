@@ -11,6 +11,11 @@ const workProgressSchema = new mongoose.Schema({
         type: String,
         required: true
     },
+    status: {
+        type: String,
+        enum: ['Pending', 'Reviewed'],
+        default: 'Pending'
+    },
     date: {
         type: String,
         default: () => new Date().toLocaleDateString('en-GB')

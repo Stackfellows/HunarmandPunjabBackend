@@ -11,6 +11,7 @@ import attendanceRoutes from './Routes/attendance.js';
 import profileRoutes from './Routes/profile.js';
 import payrollRoutes from './Routes/payroll.js';
 import uploadRoutes from './Routes/upload.js';
+import officeAccountRoutes from './Routes/officeAccount.js';
 
 // Middleware Imports
 import { protect, admin } from './middlewares/auth.js';
@@ -36,6 +37,7 @@ app.use('/api/payroll', protect, admin, payrollRoutes);
 app.use('/api/employee', protect, employeeRoutes);
 app.use('/api/attendance', protect, attendanceRoutes);
 app.use('/api/profile', protect, profileRoutes);
+app.use('/api/office-account', officeAccountRoutes);
 app.use('/api/upload', uploadRoutes); // Route already protected in the file itself
 
 // Basic Route

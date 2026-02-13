@@ -1,6 +1,7 @@
 import User from '../Models/auth.js';
 import Task from '../Models/task.js';
 import Notification from '../Models/notification.js';
+import WorkProgress from '../Models/workProgress.js';
 
 // @desc    Register a new employee
 // @route   POST /api/admin/employees
@@ -105,6 +106,49 @@ export const sendBroadcast = async (req, res) => {
         });
 
         res.status(201).json({ success: true, message: 'Broadcast sent successfully', notification });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get all work progress reports
+// @route   GET /api/admin/work-progress
+// @access  Private/Admin
+export const getWorkProgress = async (req, res) => {
+    try {
+        const progress = await WorkProgress.find().sort({ createdAt: -1 });
+        res.json({ success: true, workProgress: progress });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+// @desc    Update work progress status
+// @route   PATCH /api/admin/work-progress/:id
+// @access  Private/Admin
+export const updateWorkProgressStatus = async (req, res) => {
+    const { status } = req.body;
+
+    try {
+        const progress = await WorkProgress.findByIdAndUpdate(
+            req.params.id,
+            { status },
+            { new: true }
+        );
+
+        if (!progress) {
+            return res.status(404).json({ success: false, message: 'Work progress report not found' });
+        }
+
+        // If marked as Reviewed, notify the employee
+        if (status === 'Reviewed') {
+            await Notification.create({
+                user: progress.user,
+                message: `Your work progress update for "${progress.task.substring(0, 20)}${progress.task.length > 20 ? '...' : ''}" has been reviewed and marked as OK by Admin.`,
+                type: 'Alert'
+            });
+        }
+
+        res.json({ success: true, message: `Status updated to ${status}`, workProgress: progress });
     } catch (error) {
         res.status(500).json({ success: false, message: error.message });
     }

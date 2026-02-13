@@ -28,11 +28,17 @@ export const getEmployeeDashboard = async (req, res) => {
             $or: [{ user: req.user._id }, { user: null }]
         }).sort({ createdAt: -1 });
 
+        // Fetch recent work progress
+        const workProgress = await WorkProgress.find({ user: req.user._id })
+            .sort({ createdAt: -1 })
+            .limit(5);
+
         res.json({
             success: true,
             user,
             notifications,
             tasks,
+            workProgress,
             attendance: attendance ? { isCheckedIn: !!attendance.checkIn && !attendance.checkOut } : { isCheckedIn: false }
         });
     } catch (error) {
