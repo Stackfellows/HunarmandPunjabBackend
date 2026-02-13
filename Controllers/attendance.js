@@ -1,5 +1,6 @@
 import Attendance from '../Models/attendance.js';
 import User from '../Models/auth.js';
+import { format } from 'date-fns';
 
 // @desc    Mark attendance (check-in/out)
 // @route   POST /api/attendance/mark
@@ -7,8 +8,8 @@ import User from '../Models/auth.js';
 export const markAttendance = async (req, res) => {
     const { action } = req.body;
     const now = new Date();
-    const today = now.toISOString().split('T')[0];
-    const time = now.toLocaleTimeString('en-GB'); // HH:mm:ss
+    const today = format(now, 'yyyy-MM-dd');
+    const time = format(now, 'HH:mm:ss'); // HH:mm:ss
 
     try {
         let attendance = await Attendance.findOne({ user: req.user._id, date: today });
