@@ -12,6 +12,8 @@ import profileRoutes from './Routes/profile.js';
 import payrollRoutes from './Routes/payroll.js';
 import uploadRoutes from './Routes/upload.js';
 import officeAccountRoutes from './Routes/officeAccount.js';
+import paymentAccountRoutes from './Routes/paymentAccount.js';
+import salaryRoutes from './Routes/salary.js';
 
 // Middleware Imports
 import { protect, admin } from './middlewares/auth.js';
@@ -38,11 +40,13 @@ app.use('/api/employee', protect, employeeRoutes);
 app.use('/api/attendance', protect, attendanceRoutes);
 app.use('/api/profile', protect, profileRoutes);
 app.use('/api/office-account', officeAccountRoutes);
+app.use('/api/payment-accounts', paymentAccountRoutes);
+app.use('/api/salaries', salaryRoutes);
 app.use('/api/upload', uploadRoutes); // Route already protected in the file itself
 
 // Basic Route
 app.get('/', (req, res) => {
-    res.send('API is running...');
+    res.send('Hunarmand Punjab Backend Running Now');
 });
 
 // Error handling middleware

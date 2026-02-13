@@ -1,4 +1,6 @@
 import Expense from '../Models/expense.js';
+import Transaction from '../Models/Transaction.js';
+import PaymentAccount from '../Models/PaymentAccount.js';
 import PDFDocument from 'pdfkit';
 import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, endOfYear } from 'date-fns';
 
@@ -8,7 +10,25 @@ import { format, startOfDay, endOfDay, startOfMonth, endOfMonth, startOfYear, en
 export const addExpense = async (req, res) => {
     try {
         console.log('[DEBUG] Add expense body:', req.body);
-        const { title, amount, date, category, notes } = req.body;
+        const { title, amount, date, category, notes, paymentAccountId, transactionId } = req.body;
+
+        // Validate payment account if provided
+        let paymentAccount = null;
+        let paymentMethod = null;
+
+        if (paymentAccountId) {
+            paymentAccount = await PaymentAccount.findById(paymentAccountId);
+            if (!paymentAccount) {
+                return res.status(404).json({
+                    success: false,
+                    message: 'Payment account not found'
+                });
+            }
+            // Set payment method based on account type
+            paymentMethod = paymentAccount.accountType === 'Bank'
+                ? `${paymentAccount.bankName} Bank`
+                : paymentAccount.accountType;
+        }
 
         const expense = await Expense.create({
             title,
@@ -16,13 +36,33 @@ export const addExpense = async (req, res) => {
             date: date || new Date(),
             category,
             notes,
+            paymentAccount: paymentAccountId || null,
+            transactionId: transactionId || null,
+            paymentMethod: paymentMethod,
+            paymentDate: paymentAccountId ? new Date() : null,
             createdBy: req.user._id
         });
+
+        // Create transaction record if payment account is specified
+        let transaction = null;
+        if (paymentAccountId) {
+            transaction = await Transaction.create({
+                date: expense.date,
+                amount: expense.amount,
+                purpose: 'Expense',
+                paymentAccount: paymentAccountId,
+                transactionId: transactionId || null,
+                description: `${category}: ${title}`,
+                relatedExpense: expense._id,
+                createdBy: req.user._id
+            });
+        }
 
         console.log('[DEBUG] Expense created:', expense._id);
         res.status(201).json({
             success: true,
-            data: expense
+            data: expense,
+            transaction
         });
     } catch (err) {
         console.error('[DEBUG] Add expense error:', err.message);
@@ -53,7 +93,9 @@ export const getExpenses = async (req, res) => {
 
         const expenses = await Expense.find({
             date: { $gte: startDate, $lte: endDate }
-        }).sort({ date: -1 });
+        })
+            .populate('paymentAccount', 'accountName accountType bankName')
+            .sort({ date: -1 });
 
         const total = expenses.reduce((acc, curr) => acc + curr.amount, 0);
 

@@ -6,6 +6,11 @@ import {
     deleteExpense,
     downloadPDFReport
 } from '../Controllers/officeAccount.js';
+import {
+    getTransactions,
+    getTransactionById,
+    getTransactionsByAccount
+} from '../Controllers/transactionController.js';
 import { protect, admin } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -23,5 +28,15 @@ router.route('/expenses/:id')
     .delete(deleteExpense);
 
 router.get('/reports/download', downloadPDFReport);
+
+// Transaction routes
+router.route('/transactions')
+    .get(getTransactions);
+
+router.route('/transactions/:id')
+    .get(getTransactionById);
+
+router.route('/transactions/account/:accountId')
+    .get(getTransactionsByAccount);
 
 export default router;

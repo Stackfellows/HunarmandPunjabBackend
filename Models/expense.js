@@ -24,6 +24,22 @@ const expenseSchema = new mongoose.Schema({
         type: String,
         trim: true
     },
+    // Payment tracking fields
+    paymentAccount: {
+        type: mongoose.Schema.Types.ObjectId,
+        ref: 'PaymentAccount'
+    },
+    transactionId: {
+        type: String,
+        trim: true
+    },
+    paymentMethod: {
+        type: String,
+        trim: true
+    },
+    paymentDate: {
+        type: Date
+    },
     createdBy: {
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
