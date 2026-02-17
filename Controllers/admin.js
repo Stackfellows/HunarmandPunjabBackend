@@ -13,8 +13,9 @@ export const createEmployee = async (req, res) => {
     const {
         name, cnic, department, title, shift, workplace, salary, avatar,
         phoneNumber, address, bloodGroup, lastDegree, experience,
-        emergencyContact, bankDetails
+        emergencyContact, bankDetails, defaultAllowances, defaultDeductions
     } = req.body;
+
 
 
     try {
@@ -34,8 +35,11 @@ export const createEmployee = async (req, res) => {
             shift,
             workplace,
             salary,
+            defaultAllowances: defaultAllowances || 0,
+            defaultDeductions: defaultDeductions || 0,
             erpId: 'HP-' + Math.floor(1000 + Math.random() * 9000),
         };
+
 
         if (avatar && avatar.trim() !== '') {
             userData.avatar = avatar;
@@ -102,7 +106,7 @@ export const updateEmployee = async (req, res) => {
         const {
             name, department, title, shift, workplace, salary, status,
             phoneNumber, address, bloodGroup, lastDegree, experience,
-            emergencyContact, bankDetails, avatar
+            emergencyContact, bankDetails, avatar, defaultAllowances, defaultDeductions
         } = req.body;
 
         // Update fields if provided
@@ -112,6 +116,9 @@ export const updateEmployee = async (req, res) => {
         if (shift) user.shift = shift;
         if (workplace) user.workplace = workplace;
         if (salary !== undefined) user.salary = salary;
+        if (defaultAllowances !== undefined) user.defaultAllowances = defaultAllowances;
+        if (defaultDeductions !== undefined) user.defaultDeductions = defaultDeductions;
+
         if (status) user.status = status;
         if (phoneNumber) user.phoneNumber = phoneNumber;
         if (address) user.address = address;

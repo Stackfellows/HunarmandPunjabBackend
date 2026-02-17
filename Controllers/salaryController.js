@@ -63,8 +63,11 @@ export const getSalaryCalculation = async (req, res) => {
                 deductibleDays,
                 deductionAmount,
                 basicSalary: employee.salary || 0,
+                defaultAllowances: employee.defaultAllowances || 0,
+                defaultDeductions: employee.defaultDeductions || 0,
                 dailyRate: Math.round(dailyRate)
             }
+
         });
 
     } catch (err) {
@@ -384,9 +387,15 @@ export const deleteSalary = async (req, res) => {
 export const getEmployeeOverallSalary = async (req, res) => {
     try {
         const userId = req.params.id;
-        const salaries = await Salary.find({ employee: userId })
+        const { year } = req.query;
+
+        const query = { employee: userId };
+        if (year) query.year = Number(year);
+
+        const salaries = await Salary.find(query)
             .populate('paymentAccount', 'accountName bankName')
             .sort({ year: -1, month: -1 });
+
 
         const stats = {
             totalPaid: salaries.filter(s => s.status === 'Paid').reduce((acc, curr) => acc + curr.netSalary, 0),
@@ -409,7 +418,7 @@ export const getEmployeeOverallSalary = async (req, res) => {
 // @access  Private/Admin
 export const getOverallSalaryStats = async (req, res) => {
     try {
-        const employees = await User.find({ role: 'employee' }).select('name erpId salary avatar createdAt');
+        const employees = await User.find({ role: 'employee' }).select('name erpId salary avatar createdAt defaultAllowances defaultDeductions');
 
         const stats = await Promise.all(employees.map(async (emp) => {
             const salaries = await Salary.find({ employee: emp._id });
@@ -418,6 +427,8 @@ export const getOverallSalaryStats = async (req, res) => {
                 employeeName: emp.name,
                 erpId: emp.erpId,
                 basicSalary: emp.salary,
+                allowances: emp.defaultAllowances || 0,
+                deductions: emp.defaultDeductions || 0,
                 avatar: emp.avatar,
                 joinDate: emp.createdAt,
                 totalPaid: salaries.filter(s => s.status === 'Paid').reduce((acc, curr) => acc + curr.netSalary, 0),
@@ -426,6 +437,7 @@ export const getOverallSalaryStats = async (req, res) => {
                 recordCount: salaries.length
             };
         }));
+
 
         res.status(200).json({
             success: true,

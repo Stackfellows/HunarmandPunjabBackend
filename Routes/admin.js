@@ -1,7 +1,17 @@
 import express from 'express';
-const router = express.Router();
-import { createEmployee, getEmployees, assignTask, sendBroadcast, getWorkProgress, updateWorkProgressStatus } from '../Controllers/admin.js';
+import {
+    createEmployee,
+    getEmployees,
+    updateEmployee,
+    assignTask,
+    sendBroadcast,
+    getWorkProgress,
+    updateWorkProgressStatus,
+    downloadWorkProgressPDF
+} from '../Controllers/admin.js';
 import { protect, admin } from '../middlewares/auth.js';
+
+const router = express.Router();
 
 // Admin endpoints for employee management
 router.get('/employees', getEmployees);

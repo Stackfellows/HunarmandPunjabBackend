@@ -26,6 +26,15 @@ const userSchema = new mongoose.Schema({
     erpId: String,
     workplace: String,
     salary: Number,
+    defaultAllowances: {
+        type: Number,
+        default: 0
+    },
+    defaultDeductions: {
+        type: Number,
+        default: 0
+    },
+
     joiningDate: {
         type: String,
         default: () => new Date().toLocaleDateString('en-GB')
