@@ -495,6 +495,7 @@ export const exportLifetimeSalaryReport = async (req, res) => {
         const startX = 50;
         let currentY = doc.y;
         doc.fontSize(10);
+        doc.fillColor('#4B5563'); // Gray text for header
         doc.text('Month/Year', startX, currentY);
         doc.text('Basic', startX + 120, currentY);
         doc.text('Allowances', startX + 200, currentY);
@@ -504,22 +505,37 @@ export const exportLifetimeSalaryReport = async (req, res) => {
 
         doc.moveTo(startX, currentY + 15).lineTo(550, currentY + 15).stroke();
         currentY += 25;
+        doc.fillColor('#000000'); // Reset to black
 
         salaries.forEach((s) => {
             if (currentY > 700) {
                 doc.addPage();
                 currentY = 50;
             }
+
+            const basic = s.basicSalary || 0;
+            const allowances = s.allowances || 0;
+            const deductions = s.deductions || 0;
+            const net = s.netSalary || (basic + allowances - deductions);
+
             doc.font('Helvetica').text(`${s.month} ${s.year}`, startX, currentY);
-            doc.text(`${s.basicSalary.toLocaleString()}`, startX + 120, currentY);
-            doc.text(`${s.allowances.toLocaleString()}`, startX + 200, currentY);
-            doc.text(`${s.deductions.toLocaleString()}`, startX + 280, currentY);
-            doc.font('Helvetica-Bold').text(`${s.netSalary.toLocaleString()}`, startX + 370, currentY);
-            doc.font('Helvetica').text(`${s.status}`, startX + 460, currentY);
+            doc.text(`${basic.toLocaleString()}`, startX + 120, currentY);
+            doc.text(`${allowances.toLocaleString()}`, startX + 200, currentY);
+            doc.text(`${deductions.toLocaleString()}`, startX + 280, currentY);
+            doc.font('Helvetica-Bold').text(`${net.toLocaleString()}`, startX + 370, currentY);
+
+            // Status with color
+            if (s.status === 'Paid') doc.fillColor('#16a34a');
+            else doc.fillColor('#ca8a04');
+
+            doc.text(`${s.status}`, startX + 460, currentY);
+            doc.fillColor('#000000'); // Reset
+
             currentY += 20;
         });
 
         doc.end();
+
 
         // Audit Log
         await ActivityLog.create({
