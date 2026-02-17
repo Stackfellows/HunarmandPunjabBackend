@@ -1,5 +1,6 @@
 import mongoose from 'mongoose';
 import Salary from '../Models/Salary.js';
+import ActivityLog from '../Models/ActivityLog.js';
 import Transaction from '../Models/Transaction.js';
 import PaymentAccount from '../Models/PaymentAccount.js';
 import Attendance from '../Models/attendance.js';
@@ -155,7 +156,7 @@ export const getSalaries = async (req, res) => {
 // @access  Private/Admin
 export const paySalary = async (req, res) => {
     try {
-        const { paymentAccountId, transactionId } = req.body;
+        const { paymentAccountId, transactionId, paidBy } = req.body;
 
         // Find salary record
         const salary = await Salary.findById(req.params.id);
@@ -210,6 +211,7 @@ export const paySalary = async (req, res) => {
         salary.paymentAccount = paymentAccountIdToUse;
         salary.transactionId = transactionId;
         salary.paidDate = new Date();
+        salary.paidBy = paidBy || 'Manager';
         await salary.save();
 
         // Create transaction record
@@ -221,7 +223,19 @@ export const paySalary = async (req, res) => {
             transactionId,
             description: `Salary payment for ${salary.month} ${salary.year}`,
             relatedSalary: salary._id,
-            createdBy: req.user._id
+            createdBy: req.user._id,
+            paidBy: paidBy || 'Manager'
+        });
+
+        // Audit Log
+        await ActivityLog.create({
+            action: 'PAYMENT',
+            targetType: 'Salary',
+            targetId: salary._id,
+            description: `Salary paid for ${salary.month} ${salary.year} to ${salary.employee.name}`,
+            newValue: { status: 'Paid', transactionId, paidBy: paidBy || 'Manager' },
+            performedBy: paidBy || 'Manager',
+            user: req.user._id
         });
 
         // Populate details
@@ -289,6 +303,8 @@ export const updateSalary = async (req, res) => {
             });
         }
 
+        const previousValue = salary.toObject();
+
         // Update fields
         if (basicSalary !== undefined) salary.basicSalary = basicSalary;
         if (allowances !== undefined) salary.allowances = allowances;
@@ -303,6 +319,20 @@ export const updateSalary = async (req, res) => {
         await salary.save();
         await salary.populate('employee', 'name email designation');
 
+        const newValue = salary.toObject();
+
+        // Audit Log
+        await ActivityLog.create({
+            action: 'UPDATE',
+            targetType: 'Salary',
+            targetId: salary._id,
+            description: `Salary record updated for ${salary.month} ${salary.year} (Employee ID: ${salary.employee?._id || salary.employee})`,
+            previousValue,
+            newValue,
+            performedBy: 'Admin',
+            user: req.user._id
+        });
+
         res.status(200).json({
             success: true,
             data: salary
@@ -312,6 +342,7 @@ export const updateSalary = async (req, res) => {
         res.status(400).json({ success: false, message: err.message });
     }
 };
+
 
 // @desc    Delete salary record
 // @route   DELETE /api/salaries/:id
@@ -346,3 +377,153 @@ export const deleteSalary = async (req, res) => {
         res.status(400).json({ success: false, message: err.message });
     }
 };
+
+// @desc    Get overall salary records for an employee
+// @route   GET /api/salaries/employee/:id/overall
+// @access  Private/Admin
+export const getEmployeeOverallSalary = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const salaries = await Salary.find({ employee: userId })
+            .populate('paymentAccount', 'accountName bankName')
+            .sort({ year: -1, month: -1 });
+
+        const stats = {
+            totalPaid: salaries.filter(s => s.status === 'Paid').reduce((acc, curr) => acc + curr.netSalary, 0),
+            totalPending: salaries.filter(s => s.status === 'Unpaid').reduce((acc, curr) => acc + curr.netSalary, 0),
+            recordCount: salaries.length
+        };
+
+        res.status(200).json({
+            success: true,
+            data: salaries,
+            stats
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Get overall salary stats for all employees
+// @route   GET /api/salaries/overall/stats
+// @access  Private/Admin
+export const getOverallSalaryStats = async (req, res) => {
+    try {
+        const employees = await User.find({ role: 'employee' }).select('name erpId salary avatar createdAt');
+
+        const stats = await Promise.all(employees.map(async (emp) => {
+            const salaries = await Salary.find({ employee: emp._id });
+            return {
+                employeeId: emp._id,
+                employeeName: emp.name,
+                erpId: emp.erpId,
+                basicSalary: emp.salary,
+                avatar: emp.avatar,
+                joinDate: emp.createdAt,
+                totalPaid: salaries.filter(s => s.status === 'Paid').reduce((acc, curr) => acc + curr.netSalary, 0),
+
+                totalPending: salaries.filter(s => s.status === 'Unpaid').reduce((acc, curr) => acc + curr.netSalary, 0),
+                recordCount: salaries.length
+            };
+        }));
+
+        res.status(200).json({
+            success: true,
+            data: stats
+        });
+    } catch (error) {
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+// @desc    Export lifetime salary report as PDF
+// @route   GET /api/salaries/export/lifetime/:id
+// @access  Private/Admin
+export const exportLifetimeSalaryReport = async (req, res) => {
+    try {
+        const userId = req.params.id;
+        const employee = await User.findById(userId);
+        if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+
+        const salaries = await Salary.find({ employee: userId }).sort({ year: -1, month: -1 });
+
+        const doc = new PDFDocument({ margin: 50 });
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Lifetime_Salary_Report_${employee.name.replace(/\s+/g, '_')}.pdf`);
+        doc.pipe(res);
+
+        // Header
+        doc.fontSize(24).text('Hunarmand Punjab ERP', { align: 'center' });
+        doc.fontSize(16).text('Lifetime Salary Statement', { align: 'center' });
+        doc.moveDown();
+
+        // Employee Info
+        doc.fontSize(12).text(`Employee Name: ${employee.name}`);
+        doc.text(`ERP ID: ${employee.erpId}`);
+        doc.text(`Designation: ${employee.title}`);
+        doc.text(`Workplace: ${employee.workplace || 'N/A'}`);
+        doc.text(`Join Date: ${format(new Date(employee.createdAt), 'MMMM dd, yyyy')}`);
+
+        doc.moveDown();
+
+        // Totals
+        const totalPaid = salaries.filter(s => s.status === 'Paid').reduce((acc, curr) => acc + curr.netSalary, 0);
+        const totalPending = salaries.filter(s => s.status === 'Unpaid').reduce((acc, curr) => acc + curr.netSalary, 0);
+
+        doc.fontSize(14).font('Helvetica-Bold').text('Financial Summary');
+        doc.fontSize(12).font('Helvetica').text(`Total Lifetime Paid: Rs. ${totalPaid.toLocaleString()}`);
+        doc.text(`Total Currently Pending: Rs. ${totalPending.toLocaleString()}`);
+        doc.moveDown();
+
+        // Records Table
+        doc.fontSize(14).font('Helvetica-Bold').text('Detailed Salary History');
+        doc.moveDown(0.5);
+
+        // Table Header
+        const startX = 50;
+        let currentY = doc.y;
+        doc.fontSize(10);
+        doc.text('Month/Year', startX, currentY);
+        doc.text('Basic', startX + 120, currentY);
+        doc.text('Allowances', startX + 200, currentY);
+        doc.text('Deductions', startX + 280, currentY);
+        doc.text('Net Salary', startX + 370, currentY);
+        doc.text('Status', startX + 460, currentY);
+
+        doc.moveTo(startX, currentY + 15).lineTo(550, currentY + 15).stroke();
+        currentY += 25;
+
+        salaries.forEach((s) => {
+            if (currentY > 700) {
+                doc.addPage();
+                currentY = 50;
+            }
+            doc.font('Helvetica').text(`${s.month} ${s.year}`, startX, currentY);
+            doc.text(`${s.basicSalary.toLocaleString()}`, startX + 120, currentY);
+            doc.text(`${s.allowances.toLocaleString()}`, startX + 200, currentY);
+            doc.text(`${s.deductions.toLocaleString()}`, startX + 280, currentY);
+            doc.font('Helvetica-Bold').text(`${s.netSalary.toLocaleString()}`, startX + 370, currentY);
+            doc.font('Helvetica').text(`${s.status}`, startX + 460, currentY);
+            currentY += 20;
+        });
+
+        doc.end();
+
+        // Audit Log
+        await ActivityLog.create({
+            action: 'EXPORT',
+            targetType: 'Salary',
+            targetId: employee._id,
+            description: `Lifetime salary report exported for ${employee.name}`,
+            performedBy: 'Admin',
+            user: req.user._id
+        });
+
+    } catch (error) {
+        console.error('PDF Export Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};
+
+
+

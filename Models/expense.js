@@ -44,6 +44,11 @@ const expenseSchema = new mongoose.Schema({
         type: mongoose.Schema.Types.ObjectId,
         ref: 'User',
         required: true
+    },
+    paidBy: {
+        type: String,
+        enum: ['Manager', 'CEO', 'COO', 'Other'],
+        default: 'Manager'
     }
 }, {
     timestamps: true

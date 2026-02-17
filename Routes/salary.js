@@ -6,8 +6,12 @@ import {
     getSalarySlip,
     updateSalary,
     deleteSalary,
-    getSalaryCalculation
+    getSalaryCalculation,
+    getEmployeeOverallSalary,
+    getOverallSalaryStats,
+    exportLifetimeSalaryReport
 } from '../Controllers/salaryController.js';
+
 import { protect, admin } from '../middlewares/auth.js';
 
 const router = express.Router();
@@ -22,11 +26,16 @@ router.route('/')
 
 router.get('/calculate', getSalaryCalculation);
 
+router.get('/employee/:id/overall', getEmployeeOverallSalary); // Removed redundant protect, admin as router.use already applies them
+router.get('/overall/stats', getOverallSalaryStats);
+
 router.route('/:id')
     .put(updateSalary)
     .delete(deleteSalary);
 
 router.put('/:id/pay', paySalary);
 router.get('/:id/slip', getSalarySlip);
+router.get('/export/lifetime/:id', exportLifetimeSalaryReport);
 
 export default router;
+

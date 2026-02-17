@@ -1,7 +1,35 @@
 import express from 'express';
 import dotenv from 'dotenv';
 import cors from 'cors';
+import cron from 'node-cron';
 import connectDB from './DB/db.js';
+import WorkProgress from './Models/workProgress.js';
+import { generateMonthlySalaries } from './utils/payrollJob.js';
+
+// Automated Salary Generation on 1st of every month at midnight
+cron.schedule('0 0 1 * *', async () => {
+    try {
+        console.log('[CRON] Starting automated salary generation for the new month...');
+        await generateMonthlySalaries();
+    } catch (error) {
+        console.error('[CRON ERROR] Monthly payroll generation failed:', error);
+    }
+});
+
+// Auto-deletion/Archiving of Work Progress older than 6 months
+cron.schedule('0 0 12 * *', async () => {
+    try {
+        const sixMonthsAgo = new Date();
+        sixMonthsAgo.setMonth(sixMonthsAgo.getMonth() - 6);
+
+        const result = await WorkProgress.deleteMany({
+            createdAt: { $lt: sixMonthsAgo }
+        });
+        console.log(`[SYSTEM] Work Progress cleanup: Deleted ${result.deletedCount} records older than 6 months.`);
+    } catch (error) {
+        console.error('Failed to clear Work Progress automatically:', error);
+    }
+});
 
 // Route Imports
 import adminRoutes from './Routes/admin.js';
@@ -13,6 +41,7 @@ import payrollRoutes from './Routes/payroll.js';
 import uploadRoutes from './Routes/upload.js';
 import officeAccountRoutes from './Routes/officeAccount.js';
 import paymentAccountRoutes from './Routes/paymentAccount.js';
+import activityLogRoutes from './Routes/activityLog.js';
 import salaryRoutes from './Routes/salary.js';
 
 // Middleware Imports
@@ -42,6 +71,7 @@ app.use('/api/profile', protect, profileRoutes);
 app.use('/api/office-account', officeAccountRoutes);
 app.use('/api/payment-accounts', paymentAccountRoutes);
 app.use('/api/salaries', salaryRoutes);
+app.use('/api/activity-logs', activityLogRoutes);
 app.use('/api/upload', uploadRoutes); // Route already protected in the file itself
 
 // Basic Route

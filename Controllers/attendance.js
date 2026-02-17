@@ -7,6 +7,7 @@ import { format } from 'date-fns';
 // @access  Private
 export const markAttendance = async (req, res) => {
     const { action } = req.body;
+    // Capture server-side real-time
     const now = new Date();
     const today = format(now, 'yyyy-MM-dd');
     const time = format(now, 'HH:mm:ss'); // HH:mm:ss
