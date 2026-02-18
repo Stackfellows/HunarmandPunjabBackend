@@ -4,14 +4,28 @@ import Notification from '../Models/notification.js';
 import WorkProgress from '../Models/workProgress.js';
 import PDFDocument from 'pdfkit';
 import { format, startOfMonth, endOfMonth, startOfDay, endOfDay, startOfYear, endOfYear } from 'date-fns';
-import ActivityLog from '../Models/ActivityLog.js';
+import ActivityLogModel from '../Models/ActivityLog.js';
+import nodemailer from 'nodemailer';
+import dotenv from 'dotenv';
+
+dotenv.config();
+console.log('DEBUG: ActivityLogModel Import:', ActivityLogModel);
+
+// Configure Nodemailer Transporter
+const transporter = nodemailer.createTransport({
+    service: 'gmail', // or use host/port
+    auth: {
+        user: process.env.ADMIN_EMAIL,
+        pass: process.env.ADMIN_PASSWORD
+    }
+});
 
 // @desc    Register a new employee
 // @route   POST /api/admin/employees
 // @access  Private/Admin
 export const createEmployee = async (req, res) => {
     const {
-        name, cnic, department, title, shift, workplace, salary, avatar,
+        name, cnic, email, department, title, shift, workplace, salary, avatar,
         phoneNumber, address, bloodGroup, lastDegree, experience,
         emergencyContact, bankDetails, defaultAllowances, defaultDeductions
     } = req.body;
@@ -39,6 +53,8 @@ export const createEmployee = async (req, res) => {
             defaultDeductions: defaultDeductions || 0,
             erpId: 'HP-' + Math.floor(1000 + Math.random() * 9000),
         };
+
+        if (email) userData.email = email;
 
 
         if (avatar && avatar.trim() !== '') {
@@ -70,7 +86,7 @@ export const createEmployee = async (req, res) => {
             });
 
             // Audit Log
-            await ActivityLog.create({
+            await ActivityLogModel.create({
                 action: 'CREATE',
                 targetType: 'User',
                 targetId: user._id,
@@ -106,7 +122,7 @@ export const updateEmployee = async (req, res) => {
         const {
             name, department, title, shift, workplace, salary, status,
             phoneNumber, address, bloodGroup, lastDegree, experience,
-            emergencyContact, bankDetails, avatar, defaultAllowances, defaultDeductions
+            emergencyContact, bankDetails, avatar, defaultAllowances, defaultDeductions, email
         } = req.body;
 
         // Update fields if provided
@@ -128,6 +144,7 @@ export const updateEmployee = async (req, res) => {
         if (emergencyContact) user.emergencyContact = emergencyContact;
         if (bankDetails) user.bankDetails = bankDetails;
         if (avatar) user.avatar = avatar;
+        if (email) user.email = email;
 
         await user.save();
 
@@ -135,7 +152,7 @@ export const updateEmployee = async (req, res) => {
         delete newValue.password;
 
         // Audit Log
-        await ActivityLog.create({
+        await ActivityLogModel.create({
             action: 'UPDATE',
             targetType: 'User',
             targetId: user._id,
@@ -191,21 +208,72 @@ export const assignTask = async (req, res) => {
     }
 };
 
-// @desc    Send broadcast message
-// @route   POST /api/admin/broadcast
+// @desc    Send email
+// @route   POST /api/admin/send-email
 // @access  Private/Admin
-export const sendBroadcast = async (req, res) => {
-    const { message } = req.body;
+export const sendEmail = async (req, res) => {
+    const { message, recipients, subject } = req.body; // recipients can be 'all' or specific user ID or array of emails
 
     try {
-        const notification = await Notification.create({
-            user: null,
-            message,
-            type: 'Broadcast',
-        });
+        let targetUsers = [];
+        let emailList = [];
 
-        res.status(201).json({ success: true, message: 'Broadcast sent successfully', notification });
+        // 1. Determine Recipients
+        if (!recipients || recipients === 'all') {
+            // Send to ALL employees
+            targetUsers = await User.find({ role: 'employee', email: { $exists: true, $ne: '' } });
+            emailList = targetUsers.map(u => u.email);
+        } else if (Array.isArray(recipients)) {
+            // If recipients is array of emails (External emails)
+            emailList = recipients.filter(e => e.includes('@'));
+        } else {
+            // Single Employee ID
+            const user = await User.findById(recipients);
+            if (user && user.email) {
+                targetUsers = [user];
+                emailList = [user.email];
+            }
+        }
+
+        if (emailList.length === 0) {
+            console.warn('SendEmail: No valid recipients found.');
+            return res.status(400).json({
+                success: false,
+                message: 'No employees have valid email addresses. Please add emails to employee profiles first.'
+            });
+        }
+
+
+        // 2. Send Emails via Nodemailer
+        const mailOptions = {
+            from: `"Hunarmand Punjab Admin" <${process.env.ADMIN_EMAIL}>`,
+            bcc: emailList, // Use BCC for privacy
+            subject: subject || 'New Message from Admin',
+            text: message,
+            html: `<div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #e0e0e0; border-radius: 5px;">
+                    <h2 style="color: #00a651;">Hunarmand Punjab</h2>
+                    <p style="white-space: pre-wrap;">${message}</p>
+                    <hr style="border: 0; border-top: 1px solid #eee; margin: 20px 0;">
+                    <p style="font-size: 12px; color: #888;">This is an automated message. Please do not reply.</p>
+                   </div>`
+        };
+
+        await transporter.sendMail(mailOptions);
+
+
+        // 3. Create Notification (In-App) for internal users
+        if (targetUsers.length > 0) {
+            await Notification.create({
+                user: null, // Broadcast to all
+                message: `Email Sent: ${subject} - ${message.substring(0, 50)}...`,
+                type: 'Broadcast',
+            });
+        }
+
+        res.status(200).json({ success: true, message: `Email sent successfully to ${emailList.length} recipients.` });
+
     } catch (error) {
+        console.error('Email Error:', error);
         res.status(500).json({ success: false, message: error.message });
     }
 };

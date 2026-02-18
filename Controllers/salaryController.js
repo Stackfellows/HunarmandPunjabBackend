@@ -5,6 +5,7 @@ import Transaction from '../Models/Transaction.js';
 import PaymentAccount from '../Models/PaymentAccount.js';
 import Attendance from '../Models/attendance.js';
 import User from '../Models/auth.js';
+import PDFDocument from 'pdfkit';
 import { format } from 'date-fns';
 
 // @desc    Calculate salary stats (lates, deductions)
@@ -453,11 +454,17 @@ export const getOverallSalaryStats = async (req, res) => {
 // @access  Private/Admin
 export const exportLifetimeSalaryReport = async (req, res) => {
     try {
+        console.log('Starting PDF Export for user:', req.params.id);
         const userId = req.params.id;
         const employee = await User.findById(userId);
-        if (!employee) return res.status(404).json({ success: false, message: 'Employee not found' });
+        if (!employee) {
+            console.log('Employee not found');
+            return res.status(404).json({ success: false, message: 'Employee not found' });
+        }
+        console.log('Employee found:', employee.name);
 
         const salaries = await Salary.find({ employee: userId }).sort({ year: -1, month: -1 });
+        console.log('Salaries found:', salaries.length);
 
         const doc = new PDFDocument({ margin: 50 });
         res.setHeader('Content-Type', 'application/pdf');
@@ -555,3 +562,137 @@ export const exportLifetimeSalaryReport = async (req, res) => {
 
 
 
+
+// @desc    Export Single Salary Slip PDF
+// @route   GET /api/salaries/export/slip/:id
+// @access  Private
+export const exportSingleSalarySlip = async (req, res) => {
+    try {
+        const salary = await Salary.findById(req.params.id)
+            .populate('employee', 'name erpId title department bankDetails joiningDate phoneNumber address cnic');
+
+        if (!salary) {
+            return res.status(404).json({ success: false, message: 'Salary slip not found' });
+        }
+
+        const doc = new PDFDocument({ margin: 50, size: 'A4' });
+
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `attachment; filename=Salary_Slip_${salary.employee.erpId}_${salary.month}.pdf`);
+
+        doc.pipe(res);
+
+        // --- PDF CONTENT ---
+
+        // 1. Header
+        doc.fontSize(24).font('Helvetica-Bold').text('HUNARMAND PUNJAB', { align: 'center' });
+        doc.fontSize(10).font('Helvetica').text('Salary Confirmation Slip', { align: 'center' });
+        doc.moveDown();
+
+        // Period & Date (Right Aligned conceptually, but simple list here)
+        doc.fontSize(10).text(`Period: ${salary.month} ${salary.year}`, { align: 'right' });
+        doc.text(`Generated: ${format(new Date(), 'dd MMM yyyy')}`, { align: 'right' });
+        doc.moveDown();
+
+        // H-Line
+        doc.moveTo(50, doc.y).lineTo(550, doc.y).stroke();
+        doc.moveDown();
+
+        // 2. Employee Info
+        const leftX = 50;
+        const rightX = 300;
+        const startY = doc.y;
+
+        doc.fontSize(10).font('Helvetica-Bold').text('Employee Details');
+        doc.moveDown(0.5);
+        doc.font('Helvetica');
+
+        // Column 1
+        doc.text(`Name: ${salary.employee.name}`, leftX);
+        doc.text(`Designation: ${salary.employee.title || 'N/A'}`, leftX);
+        doc.text(`Department: ${salary.employee.department || 'N/A'}`, leftX);
+
+        // Column 2
+        doc.text(`ERP ID: ${salary.employee.erpId}`, rightX, startY + 15); // Adjust Y manually for columns
+        doc.text(`CNIC: ${salary.employee.cnic || 'N/A'}`, rightX);
+        doc.text(`Join Date: ${salary.employee.joiningDate || 'N/A'}`, rightX);
+
+        doc.moveDown(2);
+
+        // 3. Payment Status Box
+        const statusColor = salary.status === 'Paid' ? '#16a34a' : '#ca8a04'; // Green or Yellow
+        doc.fillColor(statusColor).font('Helvetica-Bold').text(`Status: ${salary.status}`, { align: 'right' });
+        doc.fillColor('black'); // Reset
+        if (salary.status === 'Paid') {
+            doc.font('Helvetica').text(`Paid Date: ${salary.paidDate ? format(new Date(salary.paidDate), 'dd MMM yyyy') : '-'}`, { align: 'right' });
+            doc.text(`Method: ${salary.paymentAccount?.accountName || 'Cash'}`, { align: 'right' });
+            if (salary.transactionId) doc.text(`Trx ID: ${salary.transactionId}`, { align: 'right' });
+        }
+        doc.moveDown();
+
+
+        // 4. Salary Details Table
+        const tableTop = doc.y;
+        const col1 = 50;
+        const col2 = 400;
+
+        // Table Header
+        doc.font('Helvetica-Bold');
+        doc.text('Description', col1, tableTop);
+        doc.text('Amount (PKR)', col2, tableTop, { align: 'right' });
+        doc.moveTo(50, tableTop + 15).lineTo(550, tableTop + 15).stroke();
+
+        let currentY = tableTop + 25;
+        doc.font('Helvetica');
+
+        // Rows
+        const rows = [
+            { label: 'Basic Salary', value: salary.basicSalary },
+            { label: 'Allowances', value: salary.allowances, isAdd: true },
+            { label: 'Deductions', value: salary.deductions, isDeduct: true },
+            { label: 'Late Deduction', value: salary.lateDeduction || 0, isDeduct: true },
+        ];
+
+        rows.forEach(row => {
+            doc.text(row.label, col1, currentY);
+            let valStr = row.value.toLocaleString();
+            if (row.isAdd) valStr = `+ ${valStr}`;
+            if (row.isDeduct) valStr = `- ${valStr}`;
+
+            doc.text(valStr, col2, currentY, { align: 'right' });
+            doc.moveTo(50, currentY + 15).lineTo(550, currentY + 15).strokeColor('#eeeeee').stroke();
+            currentY += 25;
+        });
+
+        // Net Pay
+        doc.font('Helvetica-Bold').fontSize(14);
+        doc.text('Net Payable', col1, currentY + 10);
+        doc.text(`Rs. ${salary.netSalary.toLocaleString()}`, col2, currentY + 10, { align: 'right' });
+
+        doc.strokeColor('black'); // Reset stroke
+
+        doc.moveDown(4);
+
+        // 5. Signatures
+        const signY = doc.y + 50;
+
+        doc.fontSize(10).font('Helvetica');
+        // Employee Sign
+        doc.moveTo(50, signY).lineTo(200, signY).stroke();
+        doc.text('Employee Signature', 50, signY + 5, { width: 150, align: 'center' });
+
+        // Manager Sign
+        doc.moveTo(350, signY).lineTo(500, signY).stroke();
+        doc.text('Authorized Manager', 350, signY + 5, { width: 150, align: 'center' });
+
+        // Footer
+        doc.moveDown(4);
+        doc.fontSize(8).text('System Generated | Hunarmand Punjab ERP', { align: 'center', color: 'gray' });
+
+        doc.end();
+
+    } catch (error) {
+        console.error('PDF Slip Export Error:', error);
+        res.status(500).json({ success: false, message: error.message });
+    }
+};

@@ -11,6 +11,11 @@ const userSchema = new mongoose.Schema({
         required: true,
         unique: true
     },
+    email: {
+        type: String,
+        unique: true,
+        sparse: true // Allows multiple null values for existing users without email
+    },
     password: {
         type: String,
         required: true

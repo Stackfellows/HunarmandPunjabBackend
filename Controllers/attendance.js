@@ -8,9 +8,10 @@ import { format } from 'date-fns';
 export const markAttendance = async (req, res) => {
     const { action } = req.body;
     // Capture server-side real-time
+    // Capture server-side real-time in Pakistan Time (PKT)
     const now = new Date();
-    const today = format(now, 'yyyy-MM-dd');
-    const time = format(now, 'HH:mm:ss'); // HH:mm:ss
+    const today = now.toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' }); // YYYY-MM-DD
+    const time = now.toLocaleTimeString('en-GB', { timeZone: 'Asia/Karachi', hour12: false }); // HH:mm:ss
 
     try {
         let attendance = await Attendance.findOne({ user: req.user._id, date: today });
@@ -81,7 +82,7 @@ export const getAttendanceHistory = async (req, res) => {
 // @route   GET /api/attendance/admin/today
 // @access  Private/Admin
 export const getTodayAttendanceAdmin = async (req, res) => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Karachi' });
     try {
         const attendance = await Attendance.find({ date: today })
             .populate('user', 'name erpId department title')

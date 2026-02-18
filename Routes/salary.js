@@ -9,7 +9,8 @@ import {
     getSalaryCalculation,
     getEmployeeOverallSalary,
     getOverallSalaryStats,
-    exportLifetimeSalaryReport
+    exportLifetimeSalaryReport,
+    exportSingleSalarySlip
 } from '../Controllers/salaryController.js';
 
 import { protect, admin } from '../middlewares/auth.js';
@@ -36,6 +37,7 @@ router.route('/:id')
 router.put('/:id/pay', paySalary);
 router.get('/:id/slip', getSalarySlip);
 router.get('/export/lifetime/:id', exportLifetimeSalaryReport);
+router.get('/export/slip/:id', exportSingleSalarySlip);
 
 export default router;
 

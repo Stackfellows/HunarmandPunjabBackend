@@ -25,6 +25,10 @@ export const loginUser = async (req, res) => {
             return res.status(401).json({ success: false, message: 'Invalid CNIC or password' });
         }
 
+        if (user.status === 'Terminated' || user.status === 'Resigned') {
+            return res.status(403).json({ success: false, message: 'Access Denied: Your account is disabled.' });
+        }
+
         const isMatch = await user.matchPassword(password);
         console.log('[DEBUG] Password match:', isMatch);
 
