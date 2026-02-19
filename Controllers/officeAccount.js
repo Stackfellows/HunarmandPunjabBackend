@@ -13,6 +13,24 @@ export const addExpense = async (req, res) => {
         console.log('[DEBUG] Add expense body:', req.body);
         const { title, amount, date, category, notes, paymentAccountId, transactionId, paidBy } = req.body;
 
+        // Determine paidBy role
+        let expensePaidBy = 'Manager';
+        if (req.user.role === 'admin') {
+            expensePaidBy = paidBy || 'Manager';
+        } else {
+            // For non-admins, force paidBy to be their role if it's a valid role
+            // Mapping user roles to paidBy values: CEO -> CEO, Manager -> Manager, COO -> COO
+            if (['CEO', 'Manager', 'COO'].includes(req.user.role)) {
+                expensePaidBy = req.user.role;
+            } else {
+                // If user is just 'employee', default to Manager? Or should we block? 
+                // Assuming standard employee shouldn't be adding office expenses unless authorized as one of these roles.
+                // For now, let's allow it but default to Manager, effectively they are acting on behalf of Manager.
+                // OR better, we can set paidBy to 'Other' or their specific name if needed, but requirements say CEO/Manager/COO.
+                expensePaidBy = 'Manager';
+            }
+        }
+
         // Validate payment account if provided
         let paymentAccount = null;
         let paymentMethod = null;
@@ -42,7 +60,7 @@ export const addExpense = async (req, res) => {
             paymentMethod: paymentMethod,
             paymentDate: paymentAccountId ? new Date() : null,
             createdBy: req.user._id,
-            paidBy: paidBy || 'Manager'
+            paidBy: expensePaidBy
         });
 
         // Create transaction record if payment account is specified
@@ -57,7 +75,7 @@ export const addExpense = async (req, res) => {
                 description: `${category}: ${title}`,
                 relatedExpense: expense._id,
                 createdBy: req.user._id,
-                paidBy: paidBy || 'Manager'
+                paidBy: expensePaidBy
             });
         }
 
@@ -75,7 +93,7 @@ export const addExpense = async (req, res) => {
             targetId: expense._id,
             description: `Expense added: ${expense.title} (Category: ${expense.category})`,
             newValue: expense,
-            performedBy: paidBy || 'Manager',
+            performedBy: expensePaidBy,
             user: req.user._id
         });
     } catch (err) {
@@ -89,7 +107,7 @@ export const addExpense = async (req, res) => {
 // @access  Private/Admin
 export const getExpenses = async (req, res) => {
     try {
-        const { type, date } = req.query; // type: daily, monthly, yearly
+        const { type, date, role } = req.query; // type: daily, monthly, yearly. role: Manager, CEO, COO
         let queryDate = date ? new Date(date) : new Date();
         let startDate, endDate;
 
@@ -105,9 +123,27 @@ export const getExpenses = async (req, res) => {
             endDate = endOfDay(queryDate);
         }
 
-        const expenses = await Expense.find({
+        // Build query
+        let query = {
             date: { $gte: startDate, $lte: endDate }
-        })
+        };
+
+        // Role restriction
+        if (req.user.role === 'admin') {
+            // Admin can see all, or filter by role if provided
+            if (role) {
+                query.paidBy = role;
+            }
+        } else {
+            if (['CEO', 'Manager', 'COO'].includes(req.user.role)) {
+                query.paidBy = req.user.role;
+            } else {
+                // Regular employees see nothing
+                return res.status(403).json({ success: false, message: 'Not authorized to view expenses' });
+            }
+        }
+
+        const expenses = await Expense.find(query)
             .populate('paymentAccount', 'accountName accountType bankName')
             .sort({ date: -1 });
 
@@ -131,6 +167,12 @@ export const updateExpense = async (req, res) => {
     try {
         const previousExpense = await Expense.findById(req.params.id);
         if (!previousExpense) return res.status(404).json({ success: false, message: 'Expense not found' });
+
+        // Authorization check for update
+        if (req.user.role !== 'admin' && previousExpense.paidBy !== req.user.role) {
+            return res.status(403).json({ success: false, message: 'Not authorized to update this expense' });
+        }
+
         const previousValue = previousExpense.toObject();
 
         const expense = await Expense.findByIdAndUpdate(req.params.id, req.body, {
@@ -152,7 +194,7 @@ export const updateExpense = async (req, res) => {
             description: `Expense updated: ${expense.title}`,
             previousValue,
             newValue,
-            performedBy: 'Admin',
+            performedBy: req.user.role === 'admin' ? 'Admin' : req.user.role,
             user: req.user._id
         });
 
@@ -168,11 +210,15 @@ export const updateExpense = async (req, res) => {
 // @access  Private/Admin
 export const deleteExpense = async (req, res) => {
     try {
-        const expense = await Expense.findByIdAndDelete(req.params.id);
+        const expenseToDelete = await Expense.findById(req.params.id);
+        if (!expenseToDelete) return res.status(404).json({ success: false, message: 'Expense not found' });
 
-        if (!expense) {
-            return res.status(404).json({ success: false, message: 'Expense not found' });
+        // Authorization check for delete
+        if (req.user.role !== 'admin' && expenseToDelete.paidBy !== req.user.role) {
+            return res.status(403).json({ success: false, message: 'Not authorized to delete this expense' });
         }
+
+        await Expense.findByIdAndDelete(req.params.id);
 
         res.status(200).json({ success: true, data: {} });
     } catch (err) {
@@ -185,7 +231,7 @@ export const deleteExpense = async (req, res) => {
 // @access  Private/Admin
 export const downloadPDFReport = async (req, res) => {
     try {
-        const { type, date } = req.query;
+        const { type, date, role } = req.query;
         let queryDate = date ? new Date(date) : new Date();
         let startDate, endDate, title;
 
@@ -203,10 +249,34 @@ export const downloadPDFReport = async (req, res) => {
             title = `Daily Expense Report - ${format(queryDate, 'dd MMM yyyy')}`;
         }
 
-        const expenses = await Expense.find({
+        // Build query
+        let query = {
             date: { $gte: startDate, $lte: endDate }
-        }).sort({ date: 1 });
+        };
 
+        // Role restriction
+        let reportRole = 'Manager'; // Default for title if not specific?
+        if (req.user.role === 'admin') {
+            if (role) {
+                query.paidBy = role;
+                reportRole = role; // Use requested role for title
+            } else {
+                reportRole = 'Admin View';
+            }
+        } else {
+            if (['CEO', 'Manager', 'COO'].includes(req.user.role)) {
+                query.paidBy = req.user.role;
+                reportRole = req.user.role;
+            } else {
+                return res.status(403).json({ success: false, message: 'Not authorized to view expenses' });
+            }
+        }
+
+
+        // Update Title with Role
+        title += ` (${reportRole})`;
+
+        const expenses = await Expense.find(query).sort({ date: 1 });
         const total = expenses.reduce((acc, curr) => acc + curr.amount, 0);
 
         const doc = new PDFDocument({ margin: 50 });

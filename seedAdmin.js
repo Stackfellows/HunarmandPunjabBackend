@@ -9,7 +9,7 @@ const seedAdmin = async () => {
         await mongoose.connect(process.env.MONGO_URI);
         console.log('Connected to MongoDB for seeding...');
 
-        const adminCnic = '31103-5286493-9';
+        const adminCnic = '3110352864939';
         const adminPassword = 'hrpunjaberp';
 
         const existingAdmin = await User.findOne({ cnic: adminCnic });

@@ -43,6 +43,7 @@ import officeAccountRoutes from './Routes/officeAccount.js';
 import paymentAccountRoutes from './Routes/paymentAccount.js';
 import activityLogRoutes from './Routes/activityLog.js';
 import salaryRoutes from './Routes/salary.js';
+import officeDocumentRoutes from './Routes/officeDocumentRoutes.js'; // New Route Import
 
 // Middleware Imports
 import { protect, admin } from './middlewares/auth.js';
@@ -72,6 +73,7 @@ app.use('/api/office-account', officeAccountRoutes);
 app.use('/api/payment-accounts', paymentAccountRoutes);
 app.use('/api/salaries', salaryRoutes);
 app.use('/api/activity-logs', activityLogRoutes);
+app.use('/api/office-documents', officeDocumentRoutes); // New Route Use
 app.use('/api/upload', uploadRoutes); // Route already protected in the file itself
 
 // Basic Route
