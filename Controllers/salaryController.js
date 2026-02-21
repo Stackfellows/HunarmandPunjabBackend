@@ -48,27 +48,46 @@ export const getSalaryCalculation = async (req, res) => {
             date: { $regex: regexPattern }
         });
 
-        const lateCount = attendanceRecords.filter(a => a.status === 'Late').length;
+        const lateMarks = attendanceRecords.reduce((acc, curr) => acc + (curr.lateMarks || 0), 0);
+        const earlyLeaveMarks = attendanceRecords.reduce((acc, curr) => acc + (curr.earlyLeaveMarks || 0), 0);
+        const halfDays = attendanceRecords.filter(a => a.status === 'Half-Day' || a.isHalfDay).length;
+        const absents = attendanceRecords.filter(a => a.status === 'Absent').length;
+        const totalOvertimeMinutes = attendanceRecords.reduce((acc, curr) => acc + (curr.overtimeMinutes || 0), 0);
+        const overtimeHours = (totalOvertimeMinutes / 60).toFixed(2);
 
-        // Logical Rule: 3 Lates = 1 Day Deduction
-        const deductibleDays = Math.floor(lateCount / 3);
+        // Logical Rules (New Policy - 26 Day Month):
+        // 3 Late Marks = 0.5 Day Deduction
+        // 6 Late Marks = 1.0 Day Deduction
+        // 3 Early Leaves = 0.5 Day Deduction
+        // Half Day = 0.5 Day Deduction 
+        // Absent = 1.0 Day Deduction
 
-        // Calculate amount: (Basic Salary / 30) * Deductible Days
-        const dailyRate = (employee.salary || 0) / 30;
-        const deductionAmount = Math.round(dailyRate * deductibleDays);
+        const lateDeductionDays = Math.floor(lateMarks / 3) * 0.5;
+        const earlyLeaveDeductionDays = Math.floor(earlyLeaveMarks / 3) * 0.5;
+        const halfDayDeductionDays = halfDays * 0.5;
+        const absentDeductionDays = absents * 1.0;
+
+        const totalDeductibleDays = lateDeductionDays + earlyLeaveDeductionDays + halfDayDeductionDays + absentDeductionDays;
+
+        // Calculate amount: (Basic Salary / 26) * Total Deductible Days
+        const dailyRate = (employee.salary || 0) / 26;
+        const deductionAmount = Math.round(dailyRate * totalDeductibleDays);
 
         res.status(200).json({
             success: true,
             data: {
-                lateDays: lateCount,
-                deductibleDays,
+                lateMarks,
+                earlyLeaveMarks,
+                halfDays,
+                absents,
+                overtimeHours: parseFloat(overtimeHours),
+                totalDeductibleDays,
                 deductionAmount,
                 basicSalary: employee.salary || 0,
                 defaultAllowances: employee.defaultAllowances || 0,
                 defaultDeductions: employee.defaultDeductions || 0,
                 dailyRate: Math.round(dailyRate)
             }
-
         });
 
     } catch (err) {
@@ -82,7 +101,10 @@ export const getSalaryCalculation = async (req, res) => {
 // @access  Private/Admin
 export const createSalary = async (req, res) => {
     try {
-        const { employee, month, year, basicSalary, allowances, deductions, lateDays, lateDeduction, notes } = req.body;
+        const {
+            employee, month, year, basicSalary, allowances, deductions,
+            lateMarks, halfDays, absents, overtimeHours, notes
+        } = req.body;
 
         // Calculate net salary
         const netSalary = (basicSalary || 0) + (allowances || 0) - (deductions || 0);
@@ -94,8 +116,10 @@ export const createSalary = async (req, res) => {
             basicSalary,
             allowances,
             deductions,
-            lateDays: lateDays || 0,
-            lateDeduction: lateDeduction || 0,
+            lateMarks: lateMarks || 0,
+            halfDays: halfDays || 0,
+            absents: absents || 0,
+            overtimeHours: overtimeHours || 0,
             netSalary,
             notes,
             createdBy: req.user._id
@@ -648,18 +672,22 @@ export const exportSingleSalarySlip = async (req, res) => {
         // Rows
         const rows = [
             { label: 'Basic Salary', value: salary.basicSalary },
+            { label: 'Overtime Pay / Bonus', value: salary.overtimeHours > 0 ? `(${salary.overtimeHours} hrs)` : '0', isAdd: true },
             { label: 'Allowances', value: salary.allowances, isAdd: true },
-            { label: 'Deductions', value: salary.deductions, isDeduct: true },
-            { label: 'Late Deduction', value: salary.lateDeduction || 0, isDeduct: true },
+            { label: 'Deductions (Lates/Absents)', value: salary.deductions, isDeduct: true },
+            { label: 'Attendance Detail', value: `L:${salary.lateMarks} | H:${salary.halfDays} | A:${salary.absents}`, isNeutral: true },
         ];
 
         rows.forEach(row => {
             doc.text(row.label, col1, currentY);
-            let valStr = row.value.toLocaleString();
-            if (row.isAdd) valStr = `+ ${valStr}`;
-            if (row.isDeduct) valStr = `- ${valStr}`;
-
-            doc.text(valStr, col2, currentY, { align: 'right' });
+            if (row.isNeutral) {
+                doc.text(row.value, col2, currentY, { align: 'right' });
+            } else {
+                let valStr = (row.value || 0).toLocaleString();
+                if (row.isAdd) valStr = `+ ${valStr}`;
+                if (row.isDeduct) valStr = `- ${valStr}`;
+                doc.text(valStr, col2, currentY, { align: 'right' });
+            }
             doc.moveTo(50, currentY + 15).lineTo(550, currentY + 15).strokeColor('#eeeeee').stroke();
             currentY += 25;
         });

@@ -36,6 +36,22 @@ const salarySchema = new mongoose.Schema({
         type: Number,
         default: 0
     },
+    overtimeHours: {
+        type: Number,
+        default: 0
+    },
+    halfDays: {
+        type: Number,
+        default: 0
+    },
+    absents: {
+        type: Number,
+        default: 0
+    },
+    lateMarks: {
+        type: Number,
+        default: 0
+    },
     netSalary: {
         type: Number,
         required: [true, 'Please add net salary']

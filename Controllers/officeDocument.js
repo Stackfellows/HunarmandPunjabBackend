@@ -1,7 +1,6 @@
 import Document from '../Models/Document.js';
 import puppeteer from 'puppeteer';
 import nodemailer from 'nodemailer';
-import { google } from 'googleapis';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
@@ -207,36 +206,22 @@ export const sendEmail = async (req, res) => {
         await browser.close();
         console.log('[OfficeDocument] sendEmail: PDF Generated and Browser Closed.');
 
-        // 2. Setup Transporter
-        const CLIENT_ID = process.env.GOOGLE_CLIENT_ID;
-        const CLIENT_SECRET = process.env.GOOGLE_CLIENT_SECRET;
-        const REDIRECT_URI = 'https://developers.google.com/oauthplayground';
-        const REFRESH_TOKEN = process.env.GOOGLE_REFRESH_TOKEN;
-        const EMAIL_USER = process.env.EMAIL_USER;
+        // 2. Setup Transporter (Using Basic Auth from .env)
+        const EMAIL_USER = process.env.ADMIN_EMAIL;
+        const EMAIL_PASS = process.env.ADMIN_PASSWORD;
 
-        if (!CLIENT_ID || !CLIENT_SECRET || !REFRESH_TOKEN || !EMAIL_USER) {
-            console.error('[OfficeDocument] Email credentials missing in .env');
-            return res.status(500).json({ success: false, message: 'Email credentials not configured' });
+        if (!EMAIL_USER || !EMAIL_PASS) {
+            console.error('[OfficeDocument] Email credentials missing in .env (ADMIN_EMAIL, ADMIN_PASSWORD)');
+            return res.status(500).json({ success: false, message: 'Email credentials not configured in .env' });
         }
-        console.log('[OfficeDocument] Email credentials found.');
-
-        const oAuth2Client = new google.auth.OAuth2(CLIENT_ID, CLIENT_SECRET, REDIRECT_URI);
-        oAuth2Client.setCredentials({ refresh_token: REFRESH_TOKEN });
-
-        console.log('[OfficeDocument] Getting Access Token...');
-        const accessToken = await oAuth2Client.getAccessToken();
-        console.log('[OfficeDocument] Access Token retrieved.');
+        console.log('[OfficeDocument] Email credentials found (Standard Auth).');
 
         const transporter = nodemailer.createTransport({
             service: 'gmail',
             auth: {
-                type: 'OAuth2',
                 user: EMAIL_USER,
-                clientId: CLIENT_ID,
-                clientSecret: CLIENT_SECRET,
-                refreshToken: REFRESH_TOKEN,
-                accessToken: accessToken.token,
-            },
+                pass: EMAIL_PASS
+            }
         });
         console.log('[OfficeDocument] Transporter created.');
 
@@ -267,7 +252,7 @@ export const sendEmail = async (req, res) => {
             createdBy: req.user._id
         });
 
-        res.status(200).json({ success: true, message: 'Email sent successfully', messageId: result.messageId });
+        res.status(200).json({ success: true, message: 'Email sent successfully via Standard Auth', messageId: result.messageId });
 
     } catch (err) {
         console.error('Email Sending Error:', err);

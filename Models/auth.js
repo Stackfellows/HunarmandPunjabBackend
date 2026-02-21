@@ -71,7 +71,7 @@ const userSchema = new mongoose.Schema({
     },
     status: {
         type: String,
-        enum: ['Active', 'On Leave', 'Terminated', 'Resigned'],
+        enum: ['Active', 'On Leave', 'Terminated', 'Resigned', 'Part Time'],
         default: 'Active'
     }
 }, { timestamps: true });
